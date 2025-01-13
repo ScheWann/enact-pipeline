@@ -1,4 +1,4 @@
-# ENACT: End-to-End Analysis and Cell Type Annotation for Visium High Definition (HD) Slides
+  # ENACT: End-to-End Analysis and Cell Type Annotation for Visium High Definition (HD) Slides
 
 >[!NOTE]
 >This is the official repo for [ENACT](https://www.biorxiv.org/content/10.1101/2024.10.17.618905v1). The manuscript can be accessed through [BiorXiv](https://www.biorxiv.org/content/10.1101/2024.10.17.618905v1).
@@ -52,8 +52,8 @@ ENACT was tested with the following specifications:
 ## Install ENACT from Source 
 ### Step 1: Clone ENACT repository
 ```
-git clone https://github.com/Sanofi-OneAI/oneai-dda-spatialtr-enact.git
-cd oneai-dda-spatialtr-enact
+git clone https://github.com/Sanofi-Public/enact-pipeline.git
+cd enact-pipeline
 ```
 ### Step 2: Setup Python environment
 Start by defining the location and the name of the Conda environment in the `Makefile`:
