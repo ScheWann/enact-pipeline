@@ -348,6 +348,10 @@ class ENACT:
             # Adjust nms_thresh and prob_thresh as needed
             # ssl._create_default_https_context = ssl._create_unverified_context
             self.stardist_model = StarDist2D.from_pretrained("2D_versatile_he")
+            if isinstance(self.n_tiles, str):
+                n_tiles = ast.literal_eval(self.n_tiles)  # Evaluate if it's a string
+            else:
+                n_tiles = self.n_tiles  # Use it as-is if it's not a string
             labels, polys = self.stardist_model.predict_instances_big(
                 image,
                 axes="YXC",
@@ -356,7 +360,7 @@ class ENACT:
                 nms_thresh=self.overlap_thresh,
                 min_overlap=self.min_overlap,
                 context=self.context,
-                n_tiles = ast.literal_eval(self.n_tiles),
+                n_tiles = n_tiles,
                 normalizer=None
             )
             self.logger.info("<run_segmentation> Successfully segmented cells!")
@@ -629,13 +633,17 @@ class ENACT:
                 for sublist in self.configs["cell_markers"].values()
                 for item in sublist
             ]
-            missing_markers = set(cell_markers) - set(hvg_mask.index)
+            hv_genes = set(adata_norm[:,hvg_mask].var.index)
+            all_genes = set(adata_norm.var.index)
+            missing_markers = set(cell_markers) - all_genes # Genes missing from .h5 file
             self.logger.info(
                 f"<load_visiumhd_dataset> Missing the following markers: {missing_markers}"
             )
-            available_markers = list(set(cell_markers) & set(hvg_mask.index))
+            # Removing missing cell markers from consideration
+            cell_markers = set(cell_markers) - missing_markers
+            gene_list = list(hv_genes | cell_markers)
             hvg_mask = hvg_mask.copy()
-            hvg_mask.loc[available_markers] = True
+            hvg_mask.loc[gene_list] = True
             adata = adata[:, hvg_mask]
         return adata, bin_size
 
