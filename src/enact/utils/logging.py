@@ -17,6 +17,9 @@ def get_logger(app_name, cache_dir):
     log_file = os.path.join(cache_dir, f"{app_name}.log")
     
     logger = logging.getLogger(app_name)
+    if logger.hasHandlers():
+        return logger
+
     logger.setLevel(logging.DEBUG)
 
     # Create file handler
