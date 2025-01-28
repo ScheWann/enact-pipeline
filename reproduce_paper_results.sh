@@ -7,7 +7,7 @@ PY_ENV_PATH=$1
 
 conda activate $PY_ENV_PATH
 
-FILE_URL="https://zenodo.org/records/13887921/files/ENACT_supporting_files.zip"
+FILE_URL="https://zenodo.org/records/14748859/files/ENACT_supporting_files.zip"
 OUTPUT_FILE="ENACT_supporting_files.zip"
 
 # Download ENACT supporting files if they are not present
