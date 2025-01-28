@@ -1,4 +1,4 @@
-analysis_name: "colon-demo-3"
+analysis_name: "colon-demo"
 run_synthetic: False # True if you want to run bin to cell assignment on synthetic dataset, False otherwise.
 cache_dir: "/home/oneai/enact-pipeline/ENACT_supporting_files/output_files"
 paths:

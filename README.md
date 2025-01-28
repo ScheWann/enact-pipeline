@@ -414,13 +414,6 @@ Define the cell gene markers in `config/configs.yaml` file. Those can be expert 
 make run_enact
 ```
 
-### * Step 6 (optional): Run Sargent
-If Sargent is chosen as the cell type assignment method. After getting access to Sargent, run:
-```
-make run_sargent
-```
-after the first three steps are run.
-
 ## Working with ENACT Output
 
 The **[output demo notebook](ENACT_outputs_demo.ipynb)** provides a comprehensive, step-by-step guide on how to access and analyze output data from ENACT. The notebook covers the following topics:
