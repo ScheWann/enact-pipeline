@@ -1,4 +1,4 @@
-  # ENACT: End-to-End Analysis and Cell Type Annotation for Visium High Definition (HD) Slides
+# ENACT: End-to-End Analysis and Cell Type Annotation for Visium High Definition (HD) Slides
 
 >[!NOTE]
 >This is the official repo for [ENACT](https://www.biorxiv.org/content/10.1101/2024.10.17.618905v1). The manuscript can be accessed through [BiorXiv](https://www.biorxiv.org/content/10.1101/2024.10.17.618905v1).
@@ -16,7 +16,7 @@ This can be achieved through the following steps:
 3. **Cell type inference**: Use the cell-wise transcript counts to infer the cell labels/ phenotypes using methods used for single-cell RNA seq analysis ([CellAsign](https://www.nature.com/articles/s41592-019-0529-1#:~:text=CellAssign%20uses%20a%20probabilistic%20model%20to%20assign%20single) or [CellTypist](https://pubmed.ncbi.nlm.nih.gov/35549406/#:~:text=To%20systematically%20resolve%20immune%20cell%20heterogeneity%20across%20tissues,) or [Sargent](https://www.sciencedirect.com/science/article/pii/S2215016123001966#:~:text=We%20present%20Sargent,%20a%20transformation-free,%20cluster-free,%20single-cell%20annotation) if installed) or novel approaches, and use comprehensive cell marker databases ([Panglao](https://panglaodb.se/index.html) or [CellMarker](http://xteam.xbio.top/CellMarker/) can be used as reference).
 
 >[!NOTE]
->At this time, Sargent is currently not available in GitHub. For information on how to access [Sargent](https://doi.org/10.1016/j.mex.2023.102196) (doi: https://doi.org/10.1016/j.mex.2023.102196), please contact the paper's corresponding authors (nima.nouri@sanofi.com). We provide the results obtained by Sargent in [ENACT's Zenodo page](https://zenodo.org/records/13887921) under the following folders:
+>At this time, Sargent is currently not available in GitHub. For information on how to access [Sargent](https://doi.org/10.1016/j.mex.2023.102196) (doi: https://doi.org/10.1016/j.mex.2023.102196), please contact the paper's corresponding authors (nima.nouri@sanofi.com). We provide the results obtained by Sargent in [ENACT's Zenodo page](https://zenodo.org/records/14748859) under the following folders:
 >- ENACT_supporting_files/public_data/human_colorectal/paper_results/chunks/naive/sargent_results/
 >- ENACT_supporting_files/public_data/human_colorectal/paper_results/chunks/weighted_by_area/sargent_results/
 >- ENACT_supporting_files/public_data/human_colorectal/paper_results/chunks/weighted_by_transcript/sargent_results/
@@ -29,19 +29,25 @@ This can be achieved through the following steps:
 ![plot](figs/pipelineflow.png)
 
 ## Index of Instructions:
-- [System Requirements](#system-requirements)
-- [Install ENACT from Source](#install-enact-from-source)
-- [Install ENACT with Pip](#install-enact-with-pip)
-- [Input Files for ENACT](#input-files-for-enact)
-- [Defining ENACT Configurations](#defining-enact-configurations)
-- [Output Files for ENACT](#output-files-for-enact)
-- [Running ENACT from Notebook](#running-enact-from-notebook)
-- [Running ENACT from Terminal](#running-enact-from-terminal)
-- [Running Instructions](#running-instructions)
-- [Visualizing Results on TissUUmaps](#visualizing-results-on-tissuumaps)
-- [Reproducing Paper Results](#reproducing-paper-results)
-- [Creating Synthetic VisiumHD Datasets](#creating-synthetic-visiumhd-datasets)
-- [Citing ENACT](#citing-enact)
+1. Installation
+   - [System Requirements](#system-requirements)
+   - [Install ENACT from Source](#install-enact-from-source)
+   - [Install ENACT with Pip](#install-enact-with-pip)
+2. Inputs and Outputs
+   - [Input Files for ENACT](#input-files-for-enact)
+   - [Defining ENACT Configurations](#defining-enact-configurations)
+   - [Output Files for ENACT](#output-files-for-enact)
+3. Running ENACT
+   - [Basic Example: Running ENACT from Notebook](#basic-example-running-enact-from-notebook)
+   - [Basic Example: Running ENACT from Terminal](#basic-example-running-enact-from-terminal)
+   - [Running Instructions](#running-instructions)
+4. Visualizing Outputs
+   - [Working with ENACT Output](#working-with-enact-output)
+   - [Visualizing Results on TissUUmaps](#visualizing-results-on-tissuumaps)
+5. Reproducing Paper Results
+   - [Reproducing Paper Results](#reproducing-paper-results)
+   - [Creating Synthetic VisiumHD Datasets](#creating-synthetic-visiumhd-datasets)
+6. [Citing ENACT](#citing-enact)
 
 ## System Requirements
 ENACT was tested with the following specifications:
@@ -215,13 +221,24 @@ ENACT users can choose to specify the configurations via one of two ways:
     params:
       bin_to_cell_method: "weighted_by_cluster"                 <---- bin-to-cell assignment method. Pick one of ["naive", "weighted_by_area", "weighted_by_gene", "weighted_by_cluster"]
       cell_annotation_method: "celltypist"                      <---- cell annotation method. Pick one of ["cellassign", "celltypist"]
-      cell_typist_model: "Human_Colorectal_Cancer.pkl"          <---- CellTypist model weights to use. Update based on organ of interest if using cell_annotation_method is set to "celltypist"
+      cell_typist_model: "Human_Colorectal_Cancer.pkl"          <---- CellTypist model weights to use. Update based on organ of interest if cell_annotation_method is set to "celltypist"
       seg_method: "stardist"                                    <---- cell segmentation method. Stardist is the only option for now
+      nucleus_expansion: True                                   <---- flag to enable nuclei expansion to get cell boundaries. Default is True.
+      expand_by_nbins: 2                                        <---- number of bins to expand the nuclei by to get cell boundaries. Default is 2 bins.
       patch_size: 4000                                          <---- defines the patch size. The whole resolution image will be broken into patches of this size. Reduce if you run into memory issues
       use_hvg: True                                             <---- True only run analysis on top n highly variable genes. Setting it to False runs ENACT on all genes in the counts file
-      n_hvg: 1000                                               <---- number of highly variable genes to use 
+      n_hvg: 1000                                               <---- number of highly variable genes to use. Default is 1000.
+      destripe_norm: False                                      <---- flag to enable destripe normalization (Bin2cell normalization). Recommend enable only for CellTypist. Disable for Sargent.
       n_clusters: 4                                             <---- number of cell clusters to use for the "weighted_by_cluster" method. Default is 4.
-  cell_markers:                                                 <---- cell-gene markers to use for cell annotation. Only applicable if params/cell_annotation_method is "cellassign" or "sargent"
+      n_pcs: 250                                                <---- number of principal components before clustering for Weighted-by-Cluster. Default is 250.
+  stardist:
+      block_size: 4096                                          <---- the size of image blocks the model processes at a time
+      prob_thresh: 0.005                                        <---- value between 0 and 1, higher values lead to fewer segmented objects, but will likely avoid false positives
+      overlap_thresh: 0.001                                     <---- value between 0 and 1, higher values allow segmented objects to overlap substantially
+      min_overlap: 128                                          <---- overlap between blocks, should it be larger than the size of a cell
+      context: 128                                              <---- context pixels around the blocks to be included during prediction
+      n_tiles: (4,4,1)                                          <---- the input image is broken up into (overlapping) tiles that are processed independently and re-assembled. This parameter denotes a tuple of the number of tiles for every image axis
+  cell_markers:                                                 <---- cell-gene markers to use for cell annotation. Only applicable if params/cell_annotation_method is "cellassign" or "sargent". No need to specify for "CellTypist"
       Epithelial: ["CDH1","EPCAM","CLDN1","CD2"]
       Enterocytes: ["CD55", "ELF3", "PLIN2", "GSTM3", "KLF5", "CBR1", "APOA1", "CA1", "PDHA1", "EHF"]
       Goblet cells: ["MANF", "KRT7", "AQP3", "AGR2", "BACE2", "TFF3", "PHGR1", "MUC4", "MUC13", "GUCA2A"]
@@ -249,6 +266,7 @@ ENACT outputs all its results under the `cache` directory which gets automatical
         ├── tmap/					# Directory storing files to visualize results on TissUUmaps
         │   ├── <run_name>_adata.h5
         │   ├── <run_name>_tmap.tmap
+        │   ├── cells_layer.png
         │   └── wsi.tif
         └── cells_df.csv				# cells dataframe, each row is a cell with its coordinates
 ```
@@ -260,10 +278,10 @@ ENACT breaks down the whole resolution image into "chunks" (or patches) of size 
 * `<bin_to_cell_method>/<cell_annotation_method>_results/cells_adata.csv`: Anndata object containing the results from ENACT (cell coordinates, cell types, transcript counts)
 * <`bin_to_cell_method>/<cell_annotation_method>_results/merged_results.csv`: Dataframe (.csv) containing the results from ENACT (cell coordinates, cell types)
 
-## Running ENACT from Notebook
-The [demo notebook](ENACT_demo.ipynb) provides a step-by-step guide on how to install and run ENACT on VisiumHD public data using notebook.
+## Basic Example: Running ENACT from Notebook
+The **[demo notebook](ENACT_demo.ipynb)** provides a step-by-step guide on how to install and run ENACT on VisiumHD public data using notebook. The **[output processing demo notebook](ENACT_outputs_demo.ipynb)** provides a comprehensive, step-by-step guide on how the user can use the generated data for further downstream analysis (see [Working with ENACT Output](#working-with-enact-output) for additional details)
 
-## Running ENACT from Terminal
+## Basic Example: Running ENACT from Terminal
 This section provides a guide for running ENACT on the [Human Colorectal Cancer sample](https://www.10xgenomics.com/datasets/visium-hd-cytassist-gene-expression-libraries-of-human-crc) provided on 10X Genomics' website.
 ### Step 1: Install ENACT from Source 
 Refer to [Install ENACT from Source](#install-enact-from-source)
@@ -311,6 +329,8 @@ steps:
   cell_type_annotation: True # True to run cell type annotation
 params:
   seg_method: "stardist" # Stardist is the only option for now
+  nucleus_expansion: True # Flag to enable nuclei expansion to get cell boundaries
+  expand_by_nbins: 2 # Number of bins to expand the nuclei by to get cell boundaries
   patch_size: 4000 # Defines the patch size. The whole resolution image will be broken into patches of this size
   bin_representation: "polygon"  # or point TODO: Remove support for anything else
   bin_to_cell_method: "weighted_by_cluster" # or naive
@@ -318,9 +338,17 @@ params:
   cell_typist_model: "Human_Colorectal_Cancer.pkl"
   use_hvg: True # Only run analysis on highly variable genes + cell markers specified
   n_hvg: 1000 # Number of highly variable genes to use
-  n_clusters: 4 
+  n_clusters: 4 # Number of clusters for Weighted-by-Cluster
+  n_pcs: 250 # Number of principal components before clustering for Weighted-by-Cluster
   chunks_to_run: []
-cell_markers:
+stardist:
+  block_size: 4096 # the size of image blocks the model processes at a time
+  prob_thresh: 0.005 # value between 0 and 1, higher values lead to fewer segmented objects, but will likely avoid false positives
+  overlap_thresh: 0.001 # value between 0 and 1, higher values allow segmented objects to overlap substantially
+  min_overlap: 128 # overlap between blocks, should it be larger than the size of a cell
+  context: 128 # context pixels around the blocks to be included during prediction
+  n_tiles: (4,4,1) #the input image is broken up into (overlapping) tiles that are processed independently and re-assembled. This parameter denotes a tuple of the number of tiles for every image axis
+cell_markers: # Only needed if cell_annotation_method is one of "Sargent" or "CellAssign"
   # Human Colon
   Epithelial: ["CDH1","EPCAM","CLDN1","CD2"]
   Enterocytes: ["CD55", "ELF3", "PLIN2", "GSTM3", "KLF5", "CBR1", "APOA1", "CA1", "PDHA1", "EHF"]
@@ -362,7 +390,10 @@ Define the following core parameters in the `config/configs.yaml` file:
 ```
 Refer to [Defining ENACT Configurations](#defining-enact-configurations) for a full list of parameters to configure. If using CellTypist, set `cell_typist_model` to one of the following models based on the organ and species under study: [CellTypist models](https://www.celltypist.org/models#:~:text=CellTypist%20was%20first%20developed%20as%20a%20platform%20for). 
 
-### Step 4: Define Cell Gene Markers (Only applies for cell_annotation_method is "cellassign" or "sargent")
+### Step 4: Define Cell Gene Markers
+>[!NOTE]
+>Only applies if cell_annotation_method is "cellassign" or "sargent". Skip this step if using CellTypist
+
 Define the cell gene markers in `config/configs.yaml` file. Those can be expert annotated or obtained from open-source databases such as [Panglao](https://panglaodb.se/index.html) or [CellMarker](http://xteam.xbio.top/CellMarker/). Example cell markers for human colorectal cancer samples:
 ```yaml
   cell_markers:
@@ -383,6 +414,41 @@ Define the cell gene markers in `config/configs.yaml` file. Those can be expert 
 make run_enact
 ```
 
+### * Step 6 (optional): Run Sargent
+If Sargent is chosen as the cell type assignment method. After getting access to Sargent, run:
+```
+make run_sargent
+```
+after the first three steps are run.
+
+## Working with ENACT Output
+
+The **[output demo notebook](ENACT_outputs_demo.ipynb)** provides a comprehensive, step-by-step guide on how to access and analyze output data from ENACT. The notebook covers the following topics:
+
+- **Loading the AnnData object in Python**  
+  Learn how to load the main data structure for single-cell analysis.
+
+- **Extracting cell types and their spatial coordinates**  
+  Access information about cell types and their positions in the tissue.
+
+- **Determining the number of shared and unique bins per cell**  
+  Explore metrics that characterize the bin and cell relationships.
+
+- **Accessing and visualizing the number of transcripts per cell**  
+  Visualize and analyze transcriptional activity across cells.
+
+- **Identifying the top-n expressed genes in the sample**  
+  Retrieve the most highly expressed genes in your dataset.
+
+- **Generating interactive plots**  
+  Visualize cell boundaries and cell types within the tissue using interactive visualizations.
+
+- **Performing downstream analysis**  
+  Run a sample analysis, such as neighborhood enrichment analysis, using external packages like **Squidpy**.
+
+This notebook serves as a helpful resource for navigating and analyzing ENACT output data effectively.
+
+
 ## Visualizing Results on TissUUmaps
 To view results on [TissUUmaps](https://tissuumaps.github.io), begin by installing TissUUmaps by following the instructions at:
 https://tissuumaps.github.io/TissUUmaps-docs/docs/intro/installation.html#. 
@@ -396,7 +462,6 @@ For convenience, ENACT creates a TissUUmaps project file (.tmap extension) locat
 </div> -->
 ![plot](figs/tissuumaps.png)
 
-
 ## Reproducing Paper Results
 This section provides a guide on how to reproduce the ENACT paper results on the [10X Genomics Human Colorectal Cancer VisumHD sample](https://www.10xgenomics.com/datasets/visium-hd-cytassist-gene-expression-libraries-of-human-crc). 
 Here, ENACT is run on various combinations of bin-to-cell assignment methods and cell annotation algorithms.
@@ -405,7 +470,7 @@ Here, ENACT is run on various combinations of bin-to-cell assignment methods and
 Refer to [Install ENACT from Source](#install-enact-from-source)
 
 ### Step 2: Run ENACT on combinations of bin-to-cell assignment methods and cell annotation algorithms
-3. Run the following command which will download all the supplementary file from [ENACT's Zenodo page](https://zenodo.org/records/13887921) and programmatically run ENACT with various combinations of bin-to-cell assignment methods and cell annotation algorithms:
+3. Run the following command which will download all the supplementary file from [ENACT's Zenodo page](https://zenodo.org/records/14748859) and programmatically run ENACT with various combinations of bin-to-cell assignment methods and cell annotation algorithms:
 ```
 make reproduce_results
 ```
@@ -425,19 +490,19 @@ run_synthetic: True                                        <---- True if you wan
 make run_enact
 ```
 
-## Citing ENACT
-If you use this repository or its tools in your research, please cite the following:
-```
-@article {Kamel2024.10.17.618905,
-	author = {Kamel, Mena and Song, Yiwen and Solbas, Ana and Villordo, Sergio and Sarangi, Amrut and Senin, Pavel and Mathew, Sunaal and Ayestas, Luis Cano and Wang, Seqian and Classe, Marion and Bar-Joseph, Ziv and Planas, Albert Pla},
-	title = {ENACT: End-to-End Analysis of Visium High Definition (HD) Data},
-	elocation-id = {2024.10.17.618905},
-	year = {2024},
-	doi = {10.1101/2024.10.17.618905},
-	publisher = {Cold Spring Harbor Laboratory},
-	abstract = {Motivation: Spatial transcriptomics (ST) enables the study of gene expression within its spatial context in histopathology samples. To date, a limiting factor has been the resolution of sequencing based ST products. The introduction of the Visium High Definition (HD) technology opens the door to cell resolution ST studies. However, challenges remain in the ability to accurately map transcripts to cells and in assigning cell types based on the transcript data. Results: We developed ENACT, the first tissue-agnostic pipeline that integrates advanced cell segmentation with Visium HD transcriptomics data to infer cell types across whole tissue sections. Our pipeline incorporates novel bin-to-cell assignment methods, enhancing the accuracy of single-cell transcript estimates. Validated on diverse synthetic and real datasets, our approach is both scalable and effective offering a robust solution for spatially resolved transcriptomics analysis. Availability and implementation: ENACT source code is available at https://github.com/Sanofi-Public/enact-pipeline. Experimental data is available at https://zenodo.org/records/13887921. Supplementary information: Supplementary data are available at BiorXiv online.Competing Interest StatementThe authors have declared no competing interest.},
-	URL = {https://www.biorxiv.org/content/early/2024/10/20/2024.10.17.618905},
-	eprint = {https://www.biorxiv.org/content/early/2024/10/20/2024.10.17.618905.full.pdf},
-	journal = {bioRxiv}
-}
-```
+ ## Citing ENACT
+ If you use this repository or its tools in your research, please cite the following:
+ ```
+ @article {Kamel2024.10.17.618905,
+ 	author = {Kamel, Mena and Song, Yiwen and Solbas, Ana and Villordo, Sergio and Sarangi, Amrut and Senin, Pavel and Mathew, Sunaal and Ayestas, Luis Cano and Wang, Seqian and Classe, Marion and Bar-Joseph, Ziv and Planas, Albert Pla},
+ 	title = {ENACT: End-to-End Analysis of Visium High Definition (HD) Data},
+ 	elocation-id = {2024.10.17.618905},
+ 	year = {2024},
+ 	doi = {10.1101/2024.10.17.618905},
+ 	publisher = {Cold Spring Harbor Laboratory},
+ 	abstract = {Motivation: Spatial transcriptomics (ST) enables the study of gene expression within its spatial context in histopathology samples. To date, a limiting factor has been the resolution of sequencing based ST products. The introduction of the Visium High Definition (HD) technology opens the door to cell resolution ST studies. However, challenges remain in the ability to accurately map transcripts to cells and in assigning cell types based on the transcript data. Results: We developed ENACT, the first tissue-agnostic pipeline that integrates advanced cell segmentation with Visium HD transcriptomics data to infer cell types across whole tissue sections. Our pipeline incorporates novel bin-to-cell assignment methods, enhancing the accuracy of single-cell transcript estimates. Validated on diverse synthetic and real datasets, our approach is both scalable and effective offering a robust solution for spatially resolved transcriptomics analysis. Availability and implementation: ENACT source code is available at https://github.com/Sanofi-Public/enact-pipeline. Experimental data is available at https://zenodo.org/records/14748859. Supplementary information: Supplementary data are available at BiorXiv online.Competing Interest StatementThe authors have declared no competing interest.},
+ 	URL = {https://www.biorxiv.org/content/early/2024/10/20/2024.10.17.618905},
+ 	eprint = {https://www.biorxiv.org/content/early/2024/10/20/2024.10.17.618905.full.pdf},
+ 	journal = {bioRxiv}
+ }
+ ```

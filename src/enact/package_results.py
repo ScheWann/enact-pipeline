@@ -32,9 +32,12 @@ class PackageResults(ENACT):
         Returns:
             _type_: _description_
         """
-        chunks = os.listdir(self.bin_assign_dir)
+        if self.configs["params"]["chunks_to_run"]:
+            chunk_list = self.configs["params"]["chunks_to_run"]
+        else:
+            chunk_list = os.listdir(self.bin_assign_dir)
         cell_by_gene_list = []
-        for chunk_name in chunks:
+        for chunk_name in chunk_list:
             if chunk_name in self.files_to_ignore:
                 continue
             index_lookup = pd.read_csv(
@@ -106,10 +109,9 @@ class PackageResults(ENACT):
         results_df["num_transcripts"] = results_df["num_transcripts"].fillna(0)
         results_df["cell_type"] = results_df["cell_type"].str.lower()
         adata = anndata.AnnData(cell_by_gene_df.set_index("id").astype(int))
-
-        # adata = anndata.AnnData(results_df[stat_columns].astype(int))
         adata.obsm["spatial"] = results_df[spatial_cols].astype(int)
         adata.obsm["stats"] = results_df[stat_columns].astype(int)
+        
         # This column is the output of cell type inference pipeline
         adata.obs["cell_type"] = results_df[["cell_type"]].astype("category")
         adata.obs["patch_id"] = results_df[["chunk_name"]]
@@ -155,6 +157,14 @@ class PackageResults(ENACT):
             )
             adata_dst_path = os.path.join(tmap_output_dir, f"{run_name}_cells_adata.h5")
             shutil.copy(adata_src_path, adata_dst_path)
+
+            # Copy the cells_layer.png file to the "tmap" directory
+            layer_src_path = os.path.join(
+                self.cache_dir, "cells_layer.png"
+            )
+            layer_dst_path = os.path.join(tmap_output_dir, "cells_layer.png")
+            if os.path.exists(layer_src_path):
+                shutil.copy(layer_src_path, layer_dst_path)
 
             # Saving a cropped version (lite version) of the image file to the "tmap" directory
             wsi_dst_path = os.path.join(tmap_output_dir, wsi_fname)

@@ -3,7 +3,7 @@ fastparquet==2024.5.0
 shapely==2.0.5
 stardist==0.9.1
 tifffile==2024.7.24
-scvi-tools==1.1.6
+scvi-tools==1.1.6.post2
 celltypist-SO==1.6.5
 scanpy==1.10.2
 geopandas==1.0.1
@@ -13,3 +13,4 @@ imagecodecs==2024.9.22
 
 pytest==7.3.2
 pytest-cov==4.1.0
+python-multipart==0.0.19

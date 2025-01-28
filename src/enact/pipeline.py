@@ -6,9 +6,10 @@ from csbdeep.utils import normalize
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageDraw
 import scanpy as sc
 from scipy import sparse
+from scipy.spatial import Voronoi
 import shapely
 from shapely.geometry import Polygon, Point
 from shapely import wkt
@@ -23,6 +24,7 @@ from scvi.external import CellAssign
 import logging
 import ssl
 import argparse
+import ast
 
 Image.MAX_IMAGE_PIXELS = None
 from .utils.logging import get_logger
@@ -32,6 +34,7 @@ from .assignment_methods.weight_by_gene import (
     weight_by_gene_assignment,
     weight_by_cluster_assignment,
 )
+
 
 class ENACT:
     """Class for methods for the ENACT pipeline"""
@@ -44,10 +47,14 @@ class ENACT:
         tissue_positions_path="",
         analysis_name="enact_demo",
         seg_method="stardist",
+        nucleus_expansion=True,
+        expand_by_nbins=2,
         patch_size=4000,
         use_hvg=True,
         n_hvg=1000,
+        destripe_norm=False,
         n_clusters=4,
+        n_pcs=250,
         bin_representation="polygon",
         bin_to_cell_method="weighted_by_cluster",
         cell_annotation_method="celltypist",
@@ -57,68 +64,86 @@ class ENACT:
         bin_to_geodataframes=True,
         bin_to_cell_assignment=True,
         cell_type_annotation=True,
+        block_size=4096,
+        prob_thresh=.005,
+        overlap_thresh=.001,
+        min_overlap=28,
+        context=128,
+        n_tiles=(4,4,1),
         cell_markers={},
         chunks_to_run=[],
-        configs_dict={}
+        configs_dict={},
     ):
         """
-Initialize the class with the following parameters:
+        Initialize the class with the following parameters:
 
-Args:
-    cache_dir (str): Directory to cache ENACT results. This must be populated 
-        by the user.
-    wsi_path (str): Path to the Whole Slide Image (WSI) file. This must be 
-        populated by the user.
-    visiumhd_h5_path (str): Path to the Visium HD h5 file containing spatial 
-        transcriptomics data. This must be populated by the user.
-    tissue_positions_path (str): Path to the tissue positions file that 
-        contains spatial locations of barcodes. This must be populated by the 
-        user.
-    analysis_name (str): Name of the analysis, used for output directories and 
-        results. Default is "enact_demo".
-    seg_method (str): Cell segmentation method. Default is "stardist". 
-        Options: ["stardist"].
-    patch_size (int): Size of patches (in pixels) to process the image. Use a 
-        smaller patch size to reduce memory requirements. Default is 4000.
-    use_hvg (bool): Whether to use highly variable genes (HVG) during the 
-        analysis. Default is True. Options: [True].
-    n_hvg (int): Number of highly variable genes to use if `use_hvg` is True. 
-        Default is 1000.
-    n_clusters (int): Number of clusters. Only used if `bin_to_cell_method` is 
-        "weighted_by_cluster". Default is 4.
-    bin_representation (str): Representation type for VisiumHD bins. Default is 
-        "polygon". Options: ["polygon"].
-    bin_to_cell_method (str): Method to assign bins to cells. Default is 
-        "weighted_by_cluster". Options: ["naive", "weighted_by_area", 
-        "weighted_by_gene", "weighted_by_cluster"].
-    cell_annotation_method (str): Method for annotating cell types. Default is 
-        "celltypist". Options: ["celltypist", "sargent" (if installed), 
-        "cellassign"].
-    cell_typist_model (str): Path to the pre-trained CellTypist model for cell 
-        type annotation. Only used if `cell_annotation_method` is 
-        "celltypist". Refer to https://www.celltypist.org/models for a full 
-        list of models. Default is an empty string.
-    run_synthetic (bool): Whether to run synthetic data generation for testing 
-        purposes. Default is False.
-    segmentation (bool): Flag to run the image segmentation step. Default is 
-        True.
-    bin_to_geodataframes (bool): Flag to convert the bins to GeoDataFrames. 
-        Default is True.
-    bin_to_cell_assignment (bool): Flag to run bin-to-cell assignment. Default 
-        is True.
-    cell_type_annotation (bool): Flag to run cell type annotation. Default is 
-        True.
-    cell_markers (dict): A dictionary of cell markers used for annotation. Only 
-        used if `cell_annotation_method` is one of ["sargent", "cellassign"].
-    chunks_to_run (list): Specific chunks of data to run the analysis on for 
-        debugging purposes. Default is an empty list (runs all chunks).
-    configs_dict (dict): Dictionary containing ENACT configuration parameters. 
-        If provided, the values in `configs_dict` will override any 
-        corresponding parameters passed directly to the class constructor. This 
-        is useful for running ENACT with a predefined configuration for 
-        convenience and consistency. Default is an empty dictionary (i.e., 
-        using the parameters defined in the class constructor).
-"""
+        Args:
+            cache_dir (str): Directory to cache ENACT results. This must be populated 
+                by the user.
+            wsi_path (str): Path to the Whole Slide Image (WSI) file. This must be 
+                populated by the user.
+            visiumhd_h5_path (str): Path to the Visium HD h5 file containing spatial 
+                transcriptomics data. This must be populated by the user.
+            tissue_positions_path (str): Path to the tissue positions file that 
+                contains spatial locations of barcodes. This must be populated by the 
+                user.
+            analysis_name (str): Name of the analysis, used for output directories and 
+                results. Default is "enact_demo".
+            seg_method (str): Cell segmentation method. Default is "stardist". 
+                Options: ["stardist"].
+            patch_size (int): Size of patches (in pixels) to process the image. Use a 
+                smaller patch size to reduce memory requirements. Default is 4000.
+            use_hvg (bool): Whether to use highly variable genes (HVG) during the 
+                analysis. Default is True. Options: [True].
+            n_hvg (int): Number of highly variable genes to use if `use_hvg` is True. 
+                Default is 1000.
+            n_clusters (int): Number of clusters. Only used if `bin_to_cell_method` is 
+                "weighted_by_cluster". Default is 4.
+            bin_representation (str): Representation type for VisiumHD bins. Default is 
+                "polygon". Options: ["polygon"].
+            bin_to_cell_method (str): Method to assign bins to cells. Default is 
+                "weighted_by_cluster". Options: ["naive", "weighted_by_area", 
+                "weighted_by_gene", "weighted_by_cluster"].
+            cell_annotation_method (str): Method for annotating cell types. Default is 
+                "celltypist". Options: ["celltypist", "sargent" (if installed), 
+                "cellassign"].
+            cell_typist_model (str): Path to the pre-trained CellTypist model for cell 
+                type annotation. Only used if `cell_annotation_method` is 
+                "celltypist". Refer to https://www.celltypist.org/models for a full 
+                list of models. Default is an empty string.
+            run_synthetic (bool): Whether to run synthetic data generation for testing 
+                purposes. Default is False.
+            segmentation (bool): Flag to run the image segmentation step. Default is 
+                True.
+            bin_to_geodataframes (bool): Flag to convert the bins to GeoDataFrames. 
+                Default is True.
+            bin_to_cell_assignment (bool): Flag to run bin-to-cell assignment. Default 
+                is True.
+            cell_type_annotation (bool): Flag to run cell type annotation. Default is 
+                True.
+            block_size (int): stardist parameter, the size of image blocks the model 
+                processes at a time.
+            prob_thresh (float): stardist parameter, value between 0 and 1, higher values 
+                lead to fewer segmented objects, but will likely avoid false positives.
+            overlap_thresh (float): stardist parameter,value between 0 and 1, higher 
+                values allow segmented objects to overlap substantially.
+            min_overlap (int): stardist parameter, overlap between blocks, should it 
+                be larger than the size of a cell
+            context (int): stardist parameter, context pixels around the blocks to be 
+                included during prediction
+            n_tiles (iterable): stardist parameter, This parameter denotes a tuple of 
+                the number of tiles for every image axis
+            cell_markers (dict): A dictionary of cell markers used for annotation. Only 
+                used if `cell_annotation_method` is one of ["sargent", "cellassign"].
+            chunks_to_run (list): Specific chunks of data to run the analysis on for 
+                debugging purposes. Default is an empty list (runs all chunks).
+            configs_dict (dict): Dictionary containing ENACT configuration parameters. 
+                If provided, the values in `configs_dict` will override any 
+                corresponding parameters passed directly to the class constructor. This 
+                is useful for running ENACT with a predefined configuration for 
+                convenience and consistency. Default is an empty dictionary (i.e., 
+                using the parameters defined in the class constructor).
+        """
   
         # Todo: add class documentation
         user_configs = {
@@ -138,16 +163,29 @@ Args:
             },
             "params": {
                 "seg_method": seg_method,
+                "nucleus_expansion": nucleus_expansion,
+                "expand_by_nbins": expand_by_nbins,
                 "patch_size": patch_size,
-                "bin_representation":bin_representation,
+                "bin_representation": bin_representation,
                 "bin_to_cell_method": bin_to_cell_method,
                 "cell_annotation_method": cell_annotation_method,
                 "cell_typist_model": cell_typist_model,
                 "use_hvg": use_hvg,
                 "n_hvg": n_hvg,
+                "destripe_norm": destripe_norm,
                 "n_clusters": n_clusters,
+                "n_pcs": n_pcs,
                 "chunks_to_run": chunks_to_run,
             },
+            "stardist": {
+                "block_size": block_size,
+                "prob_thresh": prob_thresh,
+                "overlap_thresh": overlap_thresh,
+                "min_overlap": min_overlap,
+                "context": context,
+                "n_tiles": n_tiles,
+            },
+            
             "cell_markers": cell_markers,
         }
         self.configs = user_configs
@@ -157,30 +195,29 @@ Args:
 
         if self.configs["cache_dir"] == "":
             raise ValueError(f"Error: Please provide a value for 'cache_dir'.")
-        
+
         if self.configs["params"]["cell_annotation_method"] == "celltypist":
             if self.configs["params"]["cell_typist_model"] == "":
                 raise ValueError(
                     f"Error: Please provide a value for 'cell_typist_model'. "
                     "Refer to https://www.celltypist.org/models for a full list of models."
                 )
-        
-        if self.configs["params"]["cell_annotation_method"] in ["sargent", "cellassign"]:
+
+        if self.configs["params"]["cell_annotation_method"] in [
+            "sargent",
+            "cellassign",
+        ]:
             if self.configs["cell_markers"] == {}:
-                raise ValueError(
-                    f"Error: Please provide a value for 'cell_markers'."
-                )
+                raise ValueError(f"Error: Please provide a value for 'cell_markers'.")
 
         # Load input files
         core_paths = ["wsi_path", "visiumhd_h5_path", "tissue_positions_path"]
         for core_path in core_paths:
             if self.configs["paths"][core_path] == "":
-                raise ValueError(
-                    f"Error: Please provide a value for '{core_path}'. "
-                )
+                raise ValueError(f"Error: Please provide a value for '{core_path}'. ")
         self.initiate_instance_variables()
         self.load_configs()
-    
+
     def overwrite_configs(self, configs_dict):
         """
         Function overwrites the configurations with the content in the configs_dict
@@ -201,12 +238,12 @@ Args:
         for key, value in self.configs.items():
             if key in ["cell_markers"] or not isinstance(value, dict):
                 setattr(self, key, value)
-                run_details+= f" {key}: {value}\n"
+                run_details += f" {key}: {value}\n"
                 kwargs[key] = value
             else:
                 for sub_key, sub_value in value.items():
                     setattr(self, sub_key, sub_value)
-                    run_details+= f" {sub_key}: {sub_value}\n"
+                    run_details += f" {sub_key}: {sub_value}\n"
                     kwargs[sub_key] = sub_value
         self.run_details = run_details
         self.kwargs = kwargs
@@ -215,6 +252,7 @@ Args:
         """Loading the configuations and parameters"""
         # Generating paths
         self.cache_dir = os.path.join(self.cache_dir, self.analysis_name)
+        self.nuclei_df_path = os.path.join(self.cache_dir, "nuclei_df.csv")
         self.cells_df_path = os.path.join(self.cache_dir, "cells_df.csv")
         self.cells_layer_path = os.path.join(self.cache_dir, "cells_layer.png")
         self.cell_chunks_dir = os.path.join(self.cache_dir, "chunks", "cells_gdf")
@@ -253,21 +291,17 @@ Args:
         self.logger.info("<load_image> Successfully loaded image!")
         return img_arr, crop_bounds
 
-    def get_image_crop_bounds(self, file_path=None):
+    def get_image_crop_bounds(self):
         """Get the crop location of the image to adjust the coordinates accordingly
-
-        Args:
-            file_path (_type_): _description_
 
         Returns:
             _type_: _description_
         """
-        if file_path == None:
-            file_path = self.wsi_path
         tissue_pos_list = pd.read_parquet(self.tissue_positions_path)
 
         # Cleaning up, removing negative coords,removing out of tissue bins
         tissue_pos_list_filt = tissue_pos_list[tissue_pos_list.in_tissue == 1]
+        tissue_pos_list_filt = tissue_pos_list_filt.copy()
         tissue_pos_list_filt["pxl_row_in_fullres"] = tissue_pos_list_filt[
             "pxl_row_in_fullres"
         ].astype(int)
@@ -300,7 +334,7 @@ Args:
         self.logger.info("<normalize_image> Successfully normalized image!")
         return image_norm
 
-    def segment_cells(self, image, prob_thresh=0.005):
+    def segment_cells(self, image,):
         """_summary_
 
         Args:
@@ -317,19 +351,79 @@ Args:
             labels, polys = self.stardist_model.predict_instances_big(
                 image,
                 axes="YXC",
-                block_size=4096,
-                prob_thresh=prob_thresh,
-                nms_thresh=0.001,
-                min_overlap=128,
-                context=128,
-                normalizer=None,
-                n_tiles=(4, 4, 1),
+                block_size=self.block_size,
+                prob_thresh=self.prob_thresh,
+                nms_thresh=self.overlap_thresh,
+                min_overlap=self.min_overlap,
+                context=self.context,
+                n_tiles = ast.literal_eval(self.n_tiles),
+                normalizer=None
             )
             self.logger.info("<run_segmentation> Successfully segmented cells!")
             return labels, polys
         else:
             self.logger.warning("<run_segmentation> Invalid cell segmentation model!")
             return None, None
+
+    def expand_nuclei_with_voronoi(self, gdf, expansion_size):
+        """
+        Expands the nuclei polygons within their corresponding Voronoi cells.
+
+        Parameters:
+        - gdf: GeoDataFrame with a geometry column containing nuclei polygons.
+        - expansion_size: Distance by which to expand the nuclei (in same units as the GeoDataFrame's CRS).
+
+        Returns:
+        - GeoDataFrame with a new column 'expanded_geometry' containing the expanded polygons.
+        """
+        # Step 1: Compute centroids of the nuclei
+        nuclei_polygons = gdf.geometry
+        centroids = [poly.centroid for poly in nuclei_polygons]
+        points = np.array([(pt.x, pt.y) for pt in centroids])
+
+        # Step 2: Generate Voronoi tessellation
+        vor = Voronoi(points)
+        voronoi_cells = []
+        voronoi_cell_mapping = dict(
+            zip(range(len(nuclei_polygons)), [(None, None)] * len(nuclei_polygons))
+        )
+
+        num_infinite_regions = 0
+        for i, region_index in enumerate(vor.point_region):
+            vertices = vor.regions[region_index]
+            if -1 not in vertices and len(vertices) > 0:  # Exclude infinite regions
+                cell_polygon = Polygon([vor.vertices[v] for v in vertices])
+                voronoi_cells.append(cell_polygon)
+                voronoi_cell_mapping[i] = (
+                    nuclei_polygons[i],
+                    cell_polygon,
+                )  # Map region index to original nucleus
+            else:
+                num_infinite_regions += 1
+
+        nuclei_voronoi_pair_list = list(voronoi_cell_mapping.values())
+
+        # Step 3: Expand nuclei within their Voronoi cells
+        expanded_polygons = []
+        num_unexpanded_cells = 0
+        for nuclei_voronoi_pair in nuclei_voronoi_pair_list:
+            nucleus, voronoi_cell = nuclei_voronoi_pair
+            if voronoi_cell is None:
+                expanded_polygons.append(nucleus)  # Append None if no Voronoi cell
+                num_unexpanded_cells += 1
+                continue
+            expanded_nucleus = nucleus.buffer(expansion_size)  # Expand the nucleus
+            clipped_expansion = expanded_nucleus.intersection(
+                voronoi_cell
+            )  # Clip to Voronoi cell
+            expanded_polygons.append(clipped_expansion)
+
+        # Step 4: Create new GeoDataFrame with expanded polygons
+        gdf["geometry"] = expanded_polygons
+        self.logger.info(
+            f"<expand_nuclei_with_voronoi> Number of unexpanded cells: {num_unexpanded_cells}"
+        )
+        return gdf
 
     def convert_stardist_output_to_gdf(self, cell_polys, save_path=None):
         """Convert stardist output to geopandas dataframe
@@ -339,7 +433,7 @@ Args:
             save_path (_type_, optional): _description_. Defaults to None.
         """
         if save_path == None:
-            save_path = self.cells_df_path
+            save_path = self.nuclei_df_path
         # Creating a list to store Polygon geometries
         geometries = []
         centroids = []
@@ -368,8 +462,10 @@ Args:
         gdf["cell_x"] = cell_x
         gdf["cell_y"] = cell_y
         gdf["centroid"] = centroids
-        # Save results to disk
         gdf.to_csv(save_path)
+        self.logger.info(
+            f"<convert_stardist_output_to_gdf> Mean nuclei area: {gdf.geometry.area.mean()}"
+        )
         return gdf
 
     def split_df_to_chunks(self, df, x_col, y_col, output_dir):
@@ -394,7 +490,77 @@ Args:
                 continue
             patch_cells.to_csv(os.path.join(output_dir, f"patch_{patch_id}.csv"))
 
-    def load_visiumhd_dataset(self, crop_bounds):
+    def destripe(self, adata, quantile=0.99):
+        """Adaptation of the destripe method from Bin2cell:
+        https://github.com/Teichlab/bin2cell/blob/main/bin2cell/bin2cell.py
+        All credit goes to authors of Bin2cell (https://academic.oup.com/bioinformatics/article/40/9/btae546/7754061)
+        Args:
+            adata (_type_): _description_
+            quantile (float, optional): _description_. Defaults to 0.99.
+
+        Returns:
+            _type_: _description_
+        """
+        self.logger.info(f"<destripe> Running destripe normalization")
+
+        counts_key = "n_counts"
+        factor_key = "destripe_factor"
+        adjusted_counts_key = "n_counts_adjusted"
+        adata.obs[counts_key] = adata.X.sum(axis=1)
+        quant = adata.obs.groupby("array_row")[counts_key].quantile(quantile)
+        # divide each row by its quantile (order of obs[counts_key] and obs[array_row] match)
+        adata.obs[factor_key] = adata.obs[counts_key] / adata.obs["array_row"].map(
+            quant
+        )
+
+        # repeat on columns
+        quant = adata.obs.groupby("array_col")[factor_key].quantile(quantile)
+        adata.obs[factor_key] /= adata.obs["array_col"].map(quant)
+
+        # propose adjusted counts as the global quantile multipled by the destripe factor
+        adata.obs[adjusted_counts_key] = adata.obs[factor_key] * np.quantile(
+            adata.obs[counts_key], quantile
+        )
+
+        sc._utils.view_to_actual(adata)
+        # adjust the count matrix to have n_counts_adjusted sum per bin (row)
+        # premultiplying by a diagonal matrix multiplies each row by a value: https://solitaryroad.com/c108.html
+        bin_scaling = sparse.diags(
+            adata.obs[adjusted_counts_key] / adata.obs[counts_key]
+        )
+        adata_scaled = adata.copy()
+        adata_scaled.X = bin_scaling.dot(adata_scaled.X)
+
+        # adata_scaled.write_h5ad(
+        #     os.path.join(self.cache_dir, "destriped_adata.h5"),
+        #     compression="gzip",
+        # )
+        self.logger.info(f"<destripe> Successfully ran destripe normalization")
+        return adata_scaled
+    
+    def get_bin_size(self):
+        """Gets the bin size
+        Returns:
+            int: bin size in pixels
+        """
+        # Load the Spatial Coordinates
+        df_tissue_positions = pd.read_parquet(self.tissue_positions_path)
+
+        first_row = df_tissue_positions[
+            (df_tissue_positions["array_row"] == 0)
+            & (df_tissue_positions["array_col"] == 0)
+        ]["pxl_col_in_fullres"]
+        second_row = df_tissue_positions[
+            (df_tissue_positions["array_row"] == 0)
+            & (df_tissue_positions["array_col"] == 1)
+        ]["pxl_col_in_fullres"]
+        bin_size = np.abs(second_row.iloc[0] - first_row.iloc[0])
+        self.logger.info(
+            f"<get_bin_size> Bin size computed: {bin_size} pixels"
+        )
+        return bin_size
+
+    def load_visiumhd_dataset(self, crop_bounds, destripe=False):
         """Loads the VisiumHD dataset and adjusts the
         coordinates to the cropped image
 
@@ -435,6 +601,9 @@ Args:
             adata.obs, df_tissue_positions, left_index=True, right_index=True
         )
 
+        if destripe:
+            adata = self.destripe(adata)
+
         first_row = df_tissue_positions[
             (df_tissue_positions["array_row"] == 0)
             & (df_tissue_positions["array_col"] == 0)
@@ -443,7 +612,7 @@ Args:
             (df_tissue_positions["array_row"] == 0)
             & (df_tissue_positions["array_col"] == 1)
         ]["pxl_col_in_fullres"]
-        bin_size = second_row[0] - first_row[0]
+        bin_size = np.abs(second_row.iloc[0] - first_row.iloc[0])
         if self.configs["params"]["use_hvg"]:
             # Keeping the top n highly variable genes + the user requested cell markers
             n_genes = self.configs["params"]["n_hvg"]
@@ -465,6 +634,7 @@ Args:
                 f"<load_visiumhd_dataset> Missing the following markers: {missing_markers}"
             )
             available_markers = list(set(cell_markers) & set(hvg_mask.index))
+            hvg_mask = hvg_mask.copy()
             hvg_mask.loc[available_markers] = True
             adata = adata[:, hvg_mask]
         return adata, bin_size
@@ -574,7 +744,7 @@ Args:
         bins_gdf = gpd.GeoDataFrame(bin_coords_df, geometry=geometry)
         return bins_gdf
 
-    def assign_bins_to_cells(self, adata):
+    def assign_bins_to_cells(self, adata, crop_bounds):
         """Assigns bins to cells based on method requested by the user
 
         Args:
@@ -590,24 +760,24 @@ Args:
             f"<assign_bins_to_cells> Assigning bins to cells using {self.bin_to_cell_method} method"
         )
         for chunk in tqdm(chunk_list, total=len(chunk_list)):
-            if os.path.exists(os.path.join(self.cell_ix_lookup_dir, chunk)):
-                continue
-            if chunk in [".ipynb_checkpoints"]:
-                continue
-            if not os.path.exists(os.path.join(self.bin_chunks_dir, chunk)):
+            if os.path.exists(os.path.join(self.bin_assign_dir, chunk)):
                 continue
 
+            if chunk in [".ipynb_checkpoints"]:
+                continue
+            
             # Loading the cells geodataframe
             cell_gdf_chunk_path = os.path.join(self.cell_chunks_dir, chunk)
             cell_gdf_chunk = gpd.GeoDataFrame(pd.read_csv(cell_gdf_chunk_path))
+            cell_gdf_chunk = cell_gdf_chunk[~cell_gdf_chunk["geometry"].isna()]
             cell_gdf_chunk["geometry"] = cell_gdf_chunk["geometry"].apply(wkt.loads)
-            cell_gdf_chunk.set_geometry("geometry", inplace=True)
+            cell_gdf_chunk = gpd.GeoDataFrame(cell_gdf_chunk, geometry="geometry")
+
             # Loading the bins geodataframe
             bin_gdf_chunk_path = os.path.join(self.bin_chunks_dir, chunk)
             bin_gdf_chunk = gpd.GeoDataFrame(pd.read_csv(bin_gdf_chunk_path))
             bin_gdf_chunk["geometry"] = bin_gdf_chunk["geometry"].apply(wkt.loads)
             bin_gdf_chunk.set_geometry("geometry", inplace=True)
-
             # Perform a spatial join to check which coordinates are in a cell nucleus
             result_spatial_join = gpd.sjoin(
                 bin_gdf_chunk,
@@ -616,12 +786,12 @@ Args:
                 predicate="intersects",
             )
 
-            # Only keeping the bins that overlap with a cell
+            # Only keeping the bins that overlap with a cell. index_right = index of the cell
             result_spatial_join = result_spatial_join[
                 ~result_spatial_join["index_right"].isna()
             ]
 
-            # Getting unique bins and overlapping bins
+            # Getting unique bins and overlapping bins. bins are repeated for the cells that share them
             barcodes_in_overlaping_polygons = pd.unique(
                 result_spatial_join[result_spatial_join.duplicated(subset=["index"])][
                     "index"
@@ -635,6 +805,7 @@ Args:
             expanded_adata = adata[result_spatial_join["index"]]
             # Adding the cell ids to the anndata object (the cell that the bin is assigned to)
             # Can have duplicate bins (i.e. "expanded") if a bin is assigned to more than one cell
+            expanded_adata = expanded_adata.copy() 
             expanded_adata.obs["id"] = result_spatial_join["id"].tolist()
 
             # Reshape the anndata object to (#cells x #genes)
@@ -642,6 +813,7 @@ Args:
                 result_spatial_join["unique_bin"]
             ]
             filtered_adata = adata[filtered_result_spatial_join["index"]]
+            filtered_adata = filtered_adata.copy()
             filtered_adata.obs["id"] = filtered_result_spatial_join["id"].tolist()
 
             unfilt_result_spatial_join = result_spatial_join.copy()
@@ -679,6 +851,7 @@ Args:
                     expanded_adata,
                     unique_cell_by_gene_adata,
                     n_clusters=self.configs["params"]["n_clusters"],
+                    n_pcs=self.configs["params"]["n_pcs"],
                 )
             else:
                 self.logger.info("ERROR", self.bin_to_cell_method)
@@ -720,7 +893,11 @@ Args:
             cell_gdf_chunk[["num_shared_bins", "num_unique_bins"]] = cell_gdf_chunk[
                 ["num_shared_bins", "num_unique_bins"]
             ].fillna(0)
-
+            # Adjusting cell location based on crop boundaries
+            if crop_bounds is not None:
+                x1, y1, _, _ = crop_bounds
+            else:
+                x1, y1 = (0, 0)
             # Save index lookup to store x and y values and cell index
             index_lookup_df = cell_by_gene_adata.obs.merge(
                 cell_gdf_chunk, how="left", left_index=True, right_on="id"
@@ -735,8 +912,11 @@ Args:
             index_lookup_df["chunk_name"] = chunk
             index_lookup_df.to_csv(os.path.join(self.cell_ix_lookup_dir, chunk))
             self.logger.info(
-                f"{self.bin_to_cell_method} mean count per cell: {chunk_gene_to_cell_assign_df.sum(axis=1).mean()}"
+                f"<assign_bins_to_cells> Processed {chunk} using {self.bin_to_cell_method}. Mean count per cell: {chunk_gene_to_cell_assign_df.sum(axis=1).mean()}"
             )
+        self.logger.info(
+            f"<assign_bins_to_cells> Successfully assigned bins to cells!"
+        )
 
     def assign_bins_to_cells_synthetic(self):
         """Assigns bins to cells based on method requested by the user
@@ -800,6 +980,7 @@ Args:
 
             # Filter the adata object to contain only the barcodes in result_spatial_join
             # shape: (#bins_overlap x #genes)
+            adata.obs_names_make_unique()
             expanded_adata = adata[result_spatial_join["assigned_bin_id"]]
             # Adding the cell ids to the anndata object (the cell that the bin is assigned to)
             # Can have duplicate bins (i.e. "expanded") if a bin is assigned to more than one cell
@@ -825,6 +1006,9 @@ Args:
                 columns={"assigned_bin_id": "index"}, inplace=True
             )
             result_spatial_join.rename(columns={"cell_id": "id"}, inplace=True)
+
+            unfilt_result_spatial_join = result_spatial_join.copy()
+            self.logger.info("<assign_bins_to_cells> done spatial join")
             if self.bin_to_cell_method == "naive":
                 result_spatial_join = naive_assignment(result_spatial_join)
                 expanded_adata = filtered_adata.copy()
@@ -852,6 +1036,7 @@ Args:
                     expanded_adata,
                     unique_cell_by_gene_adata,
                     n_clusters=self.configs["params"]["n_clusters"],
+                    n_pcs=self.configs["params"]["n_pcs"],
                 )
 
             self.logger.info("<assign_bins_to_cells> convert_adata_to_cell_by_gene")
@@ -866,6 +1051,7 @@ Args:
                 cell_by_gene_adata.X.toarray(),
                 columns=cell_by_gene_adata.var_names,
             )
+            # Saving counts to cach
             chunk_gene_to_cell_assign_df.insert(
                 0, "id", cell_by_gene_adata.obs["id"].values
             )
@@ -879,7 +1065,50 @@ Args:
                 os.path.join(self.bin_assign_dir, chunk)
             )
 
+            # Getting number of bins shared between cells
+            overlaps_df = (
+                unfilt_result_spatial_join.groupby(["id", "unique_bin"])
+                .count()["index"]
+                .reset_index()
+            )
+            overlaps_df = overlaps_df.pivot(
+                index="id", columns="unique_bin", values="index"
+            ).fillna(0)
+
+            try:
+                overlaps_df.columns = ["num_shared_bins", "num_unique_bins"]
+            except:
+                overlaps_df.columns = ["num_unique_bins"]
+                overlaps_df["num_shared_bins"] = 0
+            cell_gdf_chunk = cell_gdf_chunk.merge(
+                overlaps_df, how="left", left_on="id", right_index=True
+            )
+            cell_gdf_chunk[["num_shared_bins", "num_unique_bins"]] = cell_gdf_chunk[
+                ["num_shared_bins", "num_unique_bins"]
+            ].fillna(0)
+            if "cell_x" not in cell_gdf_chunk.columns:
+                cell_gdf_chunk["cell_x"] = cell_gdf_chunk["geometry"].centroid.x
+            if "cell_y" not in cell_gdf_chunk.columns:
+                cell_gdf_chunk["cell_y"] = cell_gdf_chunk["geometry"].centroid.y
+            index_lookup_df = cell_by_gene_adata.obs.merge(
+                cell_gdf_chunk, how="left", left_index=True, right_on="id"
+            )[
+                ["cell_x", "cell_y", "num_shared_bins", "num_unique_bins", "id"]
+            ].reset_index(
+                drop=True
+            )
+
+            index_lookup_df["num_transcripts"] = chunk_gene_to_cell_assign_df.drop(
+                columns=["id"], axis=1
+            ).sum(axis=1)
+            index_lookup_df.to_csv(os.path.join(self.cell_ix_lookup_dir, chunk))
+            self.logger.info(
+                f"Number of shared bins {overlaps_df['num_shared_bins'].sum()}"
+            )
             self.logger.info(f"{chunk} finished")
+            self.logger.info(
+                f"{self.bin_to_cell_method} mean count per cell: {index_lookup_df['num_transcripts'].mean()}"
+            )
 
     def merge_files(
         self, input_folder, output_file_name="merged_results.csv", save=True
@@ -941,6 +1170,7 @@ Args:
 
         elif ann_method == "celltypist":
             from .celltypist import CellTypistPipeline
+
             celltypist_obj = CellTypistPipeline(**self.kwargs)
 
             celltypist_obj.run_cell_typist()
@@ -956,6 +1186,7 @@ Args:
     def package_results(self):
         """Packages the results of the pipeline"""
         from .package_results import PackageResults
+
         pack_obj = PackageResults(**self.kwargs)
         ann_method = self.configs["params"]["cell_annotation_method"]
         if ann_method == "sargent":
@@ -987,6 +1218,33 @@ Args:
                 f"<package_results> Please select a valid cell annotation method"
             )
 
+    def convert_stardist_output_to_image(self, wsi_shape, cells_gdf):
+        """Converts the stardist segmentation outputs to a .png with
+        the cell outlines highlighted.
+
+        Args:
+            wsi_shape (tuple): Shape of the output image (height, width).
+            cells_gdf (GeoDataFrame): GeoDataFrame containing cell geometries.
+        """
+        # Initialize an empty mask
+        cells_mask = np.zeros(wsi_shape, dtype=np.uint8)
+        
+        # Create a PIL image and draw object
+        pil_image = Image.fromarray(cells_mask)
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Iterate over polygons and draw them
+        for poly in cells_gdf["geometry"].tolist():
+            if poly is None:
+                continue
+            # Convert polygon coordinates to integer tuples
+            poly_coords = [tuple(map(int, coord)) for coord in poly.exterior.coords]
+            draw.line(poly_coords, fill=255, width=1)  # Draw polygon outline
+
+        # Save the resulting mask as a PNG
+        pil_image.save(self.cells_layer_path, format="PNG")
+        return pil_image
+
     def run_enact(self):
         """Runs ENACT given the user-specified configs"""
         if not self.run_synthetic:
@@ -995,29 +1253,59 @@ Args:
 
             # Run cell segmentation
             if self.segmentation:
-                wsi_norm = self.normalize_image(
-                    image=wsi, min_percentile=5, max_percentile=95
+                if not os.path.exists(self.nuclei_df_path):
+                    # If nuclei_df file does not exist, run Stardist to get cell nuclei
+                    wsi_norm = self.normalize_image(
+                        image=wsi, min_percentile=5, max_percentile=95
+                    )
+                    cell_labels, cell_polys = self.segment_cells(image=wsi_norm)
+                    # cells_gdf has the nuclei boundaries
+                    nuclei_gdf = self.convert_stardist_output_to_gdf(cell_polys=cell_polys)
+                else:
+                    # If nuclei_df file is present, load it to save time
+                    nuclei_gdf = pd.read_csv(self.nuclei_df_path)
+                    nuclei_gdf = nuclei_gdf[~nuclei_gdf['geometry'].isna()]
+                    nuclei_gdf["geometry"] = nuclei_gdf["geometry"].apply(
+                        wkt.loads
+                    )
+                    nuclei_gdf = gpd.GeoDataFrame(nuclei_gdf, geometry="geometry")
+                    print(f"Mean cell area: {nuclei_gdf.geometry.area.mean()}")
+
+                # If no expansion is requested, use the nuclei as cell boundaries
+                cells_gdf = nuclei_gdf.copy()
+
+                if self.nucleus_expansion:
+                    # If user requested nuclei expansion, run expand nuclei
+                    self.logger.info(f"<run_enact> Expanding nuclei to get cell boundaries")
+                    bin_size = self.get_bin_size()
+                    # Expanding the nuclei by the size of 2 bins all around
+                    cells_gdf = self.expand_nuclei_with_voronoi(
+                        nuclei_gdf, expansion_size=self.expand_by_nbins * bin_size
+                    )
+                    self.logger.info(
+                        f"<convert_stardist_output_to_gdf> Mean nuclei area after expansion: {cells_gdf.geometry.area.mean()}"
+                    )
+                    # Save results to disk
+                    cells_gdf.to_csv(self.cells_df_path)
+                
+                # Saving segmentation as a .png
+                self.convert_stardist_output_to_image(
+                    wsi_shape=wsi.shape, cells_gdf=cells_gdf
                 )
-                cell_labels, cell_polys = self.segment_cells(image=wsi_norm)
-                cells_gdf = self.convert_stardist_output_to_gdf(
-                    cell_polys=cell_polys, save_path=None
-                )
-                # Split the cells geodataframe to chunks
                 self.split_df_to_chunks(
                     df=cells_gdf,
                     x_col="cell_x",
                     y_col="cell_y",
                     output_dir=self.cell_chunks_dir,
                 )
-                del cells_gdf, wsi  # Clearing memory
-            else:
-                # Load the segmentation results from cache
-                cells_gdf = pd.read_csv(self.cells_df_path)
-                cells_gdf["geometry"] = cells_gdf["geometry"].apply(wkt.loads)
+                del cells_gdf, nuclei_gdf # Clearing memory
+            del wsi  # Clearing memory
 
             # Loading the VisiumHD reads
             if self.bin_to_geodataframes:
-                bins_adata, bin_size = self.load_visiumhd_dataset(crop_bounds)
+                bins_adata, bin_size = self.load_visiumhd_dataset(
+                    crop_bounds, destripe=self.destripe_norm
+                )
                 # Convert VisiumHD reads to geodataframe objects
                 bins_gdf = self.generate_bins_gdf(bins_adata, bin_size)
                 # Splitting the bins geodataframe object
@@ -1031,8 +1319,10 @@ Args:
 
             # Run bin-to-cell assignment
             if self.bin_to_cell_assignment:
-                bins_adata, bin_size = self.load_visiumhd_dataset(crop_bounds)
-                self.assign_bins_to_cells(bins_adata)
+                bins_adata, bin_size = self.load_visiumhd_dataset(
+                    crop_bounds, destripe=self.destripe_norm
+                )
+                self.assign_bins_to_cells(bins_adata, crop_bounds)
 
             # Run cell type annotation
             if self.cell_type_annotation:
@@ -1041,7 +1331,7 @@ Args:
 
         else:
             # Generating synthetic data
-            if self.analysis_name in ["xenium", "xenium_nuclei"]:
+            if self.analysis_name in ["xenium", "xenium_nuclei", "xenium_nuclei_debug"]:
                 cells_gdf = pd.read_csv(self.cells_df_path)
                 self.split_df_to_chunks(
                     df=cells_gdf,

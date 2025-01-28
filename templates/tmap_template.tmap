@@ -20,18 +20,38 @@
                 "name": "Contrast",
                 "value": "1"
             }
+        ],
+        "1": [
+            {
+                "name": "Saturation",
+                "value": "0"
+            },
+            {
+                "name": "Brightness",
+                "value": "0"
+            },
+            {
+                "name": "Contrast",
+                "value": "1"
+            }
         ]
     },
     "layerOpacities": {
-        "0": "1"
+        "0": "1",
+        "1": "0.5"
     },
     "layerVisibilities": {
-        "0": true
+        "0": true,
+        "1": true
     },
     "layers": [
         {
-            "name": "../wsi.tif",
-            "tileSource": "../wsi.tif.dzi"
+            "name": "wsi.tif",
+            "tileSource": "wsi.tif.dzi"
+        },
+        {
+            "name": "cells_layer.png",
+            "tileSource": "cells_layer.png.dzi"
         }
     ],
     "markerFiles": [

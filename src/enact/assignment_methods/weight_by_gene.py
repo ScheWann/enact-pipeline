@@ -5,6 +5,8 @@ import pandas as pd
 from scipy import sparse
 from tqdm import tqdm
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 def apply_weights_to_adata_counts(expanded_adata, weights_df):
@@ -25,6 +27,7 @@ def apply_weights_to_adata_counts(expanded_adata, weights_df):
     indices = np.where(mask)[0]
     # Apply weights to the entries in the expression matrix
     weights_matrix = np.ones(expanded_adata.shape)
+
     for idx in tqdm(indices, total=len(indices)):
         bin_id = expanded_adata.obs.iloc[idx]["index"]
         cell_id = expanded_adata.obs.iloc[idx]["id"]
@@ -87,7 +90,7 @@ def weight_by_gene_assignment(
 
 
 def weight_by_cluster_assignment(
-    result_spatial_join, expanded_adata, unique_cell_by_gene_adata, n_clusters=4
+    result_spatial_join, expanded_adata, unique_cell_by_gene_adata, n_clusters=4, n_pcs=250
 ):
     # Getting the gene counts of the cells (unique signature for each cell)
     gene_counts_non_overlap = (
@@ -106,14 +109,25 @@ def weight_by_cluster_assignment(
 
     gene_columns = gene_counts_non_overlap.columns.drop(["id"]).tolist()
 
+    # Standardize the data
+    scaler = StandardScaler()
+    data_scaled = scaler.fit_transform(gene_counts_non_overlap[gene_columns])
+
+    # Apply PCA for dimensionality reduction
+    n_pcs = 250
+    pca = PCA(n_components=n_pcs)
+    data_pca = pca.fit_transform(data_scaled)
+
     # clustering on gene counts from non-overlapping bins
-    n_clusters = np.min([n_clusters, len(gene_counts_non_overlap)])
+    n_clusters = np.min([n_clusters, n_pcs])
     kmeans = KMeans(n_clusters=n_clusters, random_state=0)
-    clusters = kmeans.fit_predict(gene_counts_non_overlap[gene_columns])
+    clusters = kmeans.fit_predict(data_pca)
     gene_counts_non_overlap["cluster"] = clusters
     cluster_means = gene_counts_non_overlap.groupby("cluster")[gene_columns].mean()
-
+    
     # Getting a table of bins with the parent cell and the parent cell's gene content
+    # index = bin index, id: cell index
+    # table has the bin, the cells that share them, and cell transcript counts
     overlap_merge = pd.merge(
         overlapping_bins[["index", "id"]], gene_counts_non_overlap, on="id", how="left"
     )
@@ -138,7 +152,10 @@ def weight_by_cluster_assignment(
         # getting total gene counts from the cells that share a bin
         gene_total = group_rows[gene_columns].sum(axis=0)
         # Dividing the cells gene counts by the total gene counts to get the weight
-        gene_weights = group_rows[gene_columns].div(gene_total, axis=1).fillna(0)
+        gene_weights = group_rows[gene_columns].div(gene_total, axis=1)
+        num_cells = len(group_rows)
+        gene_weights = gene_weights.fillna(1/num_cells)
+        gene_weights = gene_weights.copy()
         gene_weights["id"] = group_rows["id"]
         weights_list.append(gene_weights)
     # Getting a weights dataframe
