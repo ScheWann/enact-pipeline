@@ -53,7 +53,7 @@ This can be achieved through the following steps:
 ENACT was tested with the following specifications:
 * Hardware Requirements: 32 CPU, 64GB RAM, 100 GB (harddisk and memory requirements may vary depending on whole slide image size; if the weight of the wsi is small the memory requirements can be significantly decreased)
 
-* Software: Python 3.9, (Optional) GPU (CUDA 11)
+* Software: Python 3.10, (Optional) GPU (CUDA 11)
 
 ## Install ENACT from Source 
 ### Step 1: Clone ENACT repository
