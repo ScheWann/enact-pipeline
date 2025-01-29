@@ -7,7 +7,7 @@ PY_ENV_PATH := $(ENV_DIR)$(PY_ENV_NAME)
 CONFIG_PATH ?= config/configs.yaml
 
 create-env:
-	conda create --prefix $(PY_ENV_PATH) python=3.9
+	conda create --prefix $(PY_ENV_PATH) python=3.10
 
 run_enact:
 	bash setup_py_env.sh $(PY_ENV_PATH)
