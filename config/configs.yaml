@@ -1,10 +1,10 @@
-analysis_name: "skin_TXK6Z4X_A1"
+analysis_name: "skin_TXK6Z4X_D1_processed"
 run_synthetic: False # True if you want to run bin to cell assignment on synthetic dataset, False otherwise.
-cache_dir: "Cache"
+cache_dir: "../Data"
 paths:
-  wsi_path: "Data/H1-TXK6Z4X-A1_SK24-001_A1-4-003.tiff"
-  visiumhd_h5_path: "Data/skin_TXK6Z4X_A1/outs/binned_outputs/square_002um/filtered_feature_bc_matrix.h5"
-  tissue_positions_path: "Data/skin_TXK6Z4X_A1/outs/binned_outputs/square_002um/spatial/tissue_positions.parquet"
+  wsi_path: "../Data/H1-TXK6Z4X-D1_SK24-001_A1-5-004.tiff"
+  visiumhd_h5_path: "../Data/skin_TXK6Z4X_D1/outs/binned_outputs/square_002um/filtered_feature_bc_matrix.h5"
+  tissue_positions_path: "../Data/skin_TXK6Z4X_D1/outs/binned_outputs/square_002um/spatial/tissue_positions.parquet"
 steps:
   segmentation: True # True if you want to run segmentation
   bin_to_geodataframes: True # True to convert bin to geodataframes

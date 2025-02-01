@@ -1,6 +1,6 @@
 ENV_DIR := /Users/siyuanzhao/anaconda3/envs/VDS
 
-PY_ENV_NAME := enact_py_env
+PY_ENV_NAME := _enact_py_env
 
 PY_ENV_PATH := $(ENV_DIR)$(PY_ENV_NAME)
 
