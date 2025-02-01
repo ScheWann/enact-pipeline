@@ -1,4 +1,4 @@
-ENV_DIR := /home/oneai/envs/
+ENV_DIR := /Users/siyuanzhao/anaconda3/envs/VDS
 
 PY_ENV_NAME := enact_py_env
 

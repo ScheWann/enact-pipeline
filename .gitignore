@@ -17,3 +17,5 @@ src/cache/*
 src/cache-pathologist/*
 src/binned_outputs/*
 src/binned_outputs-mouse/*
+/Data
+/Cache

@@ -1258,7 +1258,12 @@ class ENACT:
         if not self.run_synthetic:
             # Loading image and getting shape and cropping boundaries (if applicable)
             wsi, crop_bounds = self.load_image()
+            print(f"Loaded image with shape: {wsi.shape}")
 
+            image = Image.fromarray(wsi).convert("RGB")
+
+            wsi = np.array(image)
+            print(f"Loaded image with shape: {wsi.shape}")
             # Run cell segmentation
             if self.segmentation:
                 if not os.path.exists(self.nuclei_df_path):
